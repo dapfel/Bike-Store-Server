@@ -1,41 +1,143 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+import express from "express";
+import dotenv from "dotenv";
+  dotenv.config();
+import bodyParser from "body-parser";
+import session from "express-session";
+import passport from "passport";
+import initializeDbConnection, {User, Bike} from "./init-DB-connection";
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+const port = process.env.PORT || 5000;
+initializeExpress();
+initializeDbConnection(passport);
 
-var app = express();
-
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
-
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
-
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404));
+app.post("/register", (req, res) => {
+  registerUser(req, res);
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+app.post("/login", (req, res) => {
+  loginUser(req, res);
 });
 
-module.exports = app;
+app.get("/logout", (req, res) => {
+  req.logout();
+  res.send(200, "logged out");
+});
+
+app.get('/bikes', (req, res) => {
+  sendAllBikes(req, res);
+});
+
+app.get("/cartItems", (req, res) => {
+  if (req.isAuthenticated()) {
+    sendCartItems(req, res);
+  } else {
+    res.send(401, "User not authenticated");
+  }
+});
+
+app.post("/cartItems/:itemID", (req, res) => {
+  if (req.isAuthenticated()) {
+    addCartItemId(req, res);
+  }
+  else {
+    res.send(401, "User not authenticated");
+  }
+});
+
+app.get("/purchase", (req, res) => {
+  purchaseCartItems(req, res);
+})
+
+app.listen(port, () => console.log(`Listening on port ${port}`));
+
+// ---------------- Helper Functions -------------------------------------------------------------------- //
+
+function initializeExpress() {
+  const app = express();
+
+  app.use(bodyParser.urlencoded({
+    extended: true
+  }));
+  app.use(express.static("public"));
+  app.use(session({
+    secret: process.env.SECRET,
+    resave: false,
+    saveUninitialized: false,
+  }));
+  app.use(passport.initialize());
+  app.use(passport.session());
+}
+
+function registerUser(req, res) {
+  User.register({
+    username: req.body.username
+  }, req.body.password, (err, newUser) => {
+    if (err) {
+      res.send(400, "failed to register");
+    } else {
+      passport.authenticate("local")(req, res, () => {
+        res.send(200, "registration completed");
+      });
+    }
+  });
+}
+
+function loginUser (req, res) {
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password
+  });
+
+  req.login(user, (err) => {
+    if (err) {
+      res.send(400, "failed to login");
+    } else {
+      passport.authenticate("local")(req, res, () => {
+        res.send(200, "login completed");
+      });
+    }
+  });
+}
+
+function sendAllBikes(req, res) {
+  Bike.find({}, (err, bikes) => {
+    if (!err) {
+    res.send({ data: bikes});
+    } else {
+      res.send(err);
+    }
+  });
+}
+
+function sendCartItems(req, res) {
+  User.findOne({_id: req.user._id}, (err, user) => {
+    if (!err) {
+      const cartItems = Bike.find().where('_id').in(user.cartItemIds).exec((err, bikes) => {
+        if (!err) {
+          res.send({ data: cartItems});
+        } else {
+          res.send(err);
+        }
+      });
+      } else {
+        res.send(err);
+      }
+  });
+
+  function addCartItemId(req, res) {
+    const newItemId = req.body.newItemId;
+    const query = {_id: req.user._id};
+    const update = {$push: {cartItemIds: newItemId}}
+    User.findOneAndUpdate(query, update, (err) => {
+      if (!err) {
+        res.send(200, "item added to cart");
+      } else {
+        res.send(400, "failed to add item to cart")
+      }
+    })
+  }
+
+  function purchaseCartItems(req, res) {
+    TODO: "process payment and send reciept info if successfull. then empty cart"
+  }
+}
