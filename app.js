@@ -1,13 +1,17 @@
 import express from "express";
+import cors from "cors";
 import dotenv from "dotenv";
   dotenv.config();
 import bodyParser from "body-parser";
 import session from "express-session";
 import passport from "passport";
-import initializeDbConnection, {User, Bike} from "./init-DB-connection";
+import mongoose from "mongoose";
+import passportLocalMongoose from "passport-local-mongoose";
 
 const port = process.env.PORT || 5000;
-initializeExpress();
+const app = initializeExpress();
+let User;
+let Bike;
 initializeDbConnection(passport);
 
 app.post("/register", (req, res) => {
@@ -20,18 +24,22 @@ app.post("/login", (req, res) => {
 
 app.get("/logout", (req, res) => {
   req.logout();
-  res.send(200, "logged out");
+  res.status(200).send("logged out");
 });
 
-app.get('/bikes', (req, res) => {
-  sendAllBikes(req, res);
+app.get('/bikes/featured', (req, res) => {
+  sendFeaturedBikes(req, res);
+});
+
+app.get('/bikes/search', (req, res) => {
+  searchBikes(req,res);
 });
 
 app.get("/cartItems", (req, res) => {
   if (req.isAuthenticated()) {
     sendCartItems(req, res);
   } else {
-    res.send(401, "User not authenticated");
+    res.status(401).send("User not authenticated");
   }
 });
 
@@ -40,7 +48,7 @@ app.post("/cartItems/:itemID", (req, res) => {
     addCartItemId(req, res);
   }
   else {
-    res.send(401, "User not authenticated");
+    res.status(401).send("User not authenticated");
   }
 });
 
@@ -55,6 +63,8 @@ app.listen(port, () => console.log(`Listening on port ${port}`));
 function initializeExpress() {
   const app = express();
 
+  app.use(bodyParser.json());
+  app.use(cors());
   app.use(bodyParser.urlencoded({
     extended: true
   }));
@@ -66,17 +76,55 @@ function initializeExpress() {
   }));
   app.use(passport.initialize());
   app.use(passport.session());
+  
+  return app;
+}
+
+function initializeDbConnection(passport) {
+    mongoose.connect("mongodb://localhost:27017/bikeStoreDB", {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    mongoose.set("useCreateIndex", true);
+    
+    const userSchema = new mongoose.Schema({
+      username: String,
+      password: String,
+      firstName: String,
+      lastName: String,
+      cartItemIds: [String],
+      creditCard: {num: String, exp: String, ccv: String}
+    });
+    
+    userSchema.plugin(passportLocalMongoose);
+    
+    User = new mongoose.model("User", userSchema);
+    
+    passport.use(User.createStrategy());
+    passport.serializeUser(User.serializeUser());
+    passport.deserializeUser(User.deserializeUser());
+
+    const bikeSchema = new mongoose.Schema({
+      name: String,
+      brand: String,
+      price: String,
+      description: String,
+      featured: Boolean,
+      images: [Buffer]
+    });
+
+    Bike = new mongoose.model("Bike", bikeSchema);
 }
 
 function registerUser(req, res) {
   User.register({
-    username: req.body.username
+    username: req.body.username, firstName: req.body.firstName, lastName: req.body.lastName,
   }, req.body.password, (err, newUser) => {
     if (err) {
-      res.send(400, "failed to register");
+      res.status(400).send("failed to register");
     } else {
       passport.authenticate("local")(req, res, () => {
-        res.send(200, "registration completed");
+        res.status(200).send("registration completed");
       });
     }
   });
@@ -90,19 +138,38 @@ function loginUser (req, res) {
 
   req.login(user, (err) => {
     if (err) {
-      res.send(400, "failed to login");
+      res.status(400).send("failed to login");
     } else {
       passport.authenticate("local")(req, res, () => {
-        res.send(200, "login completed");
+        res.status(200).send({userCart: req.user.cartItemIds, creditCard: req.user.creditCard});
       });
     }
   });
 }
 
-function sendAllBikes(req, res) {
-  Bike.find({}, (err, bikes) => {
+function sendFeaturedBikes(req, res) {
+  Bike.find({featured: true}, (err, bikes) => {
     if (!err) {
-    res.send({ data: bikes});
+    res.send({ bikeData: bikes});
+    } else {
+      res.send(err);
+    }
+  });
+}
+
+
+function searchBikes(req, res) {
+  const searchTerm = req.query.searchTerm;
+  var tokenizedSearchTerms = searchTerm.split(" "); 
+  const conditions = [];
+  tokenizedSearchTerms.forEach((term) => {
+    conditions.push([{name: {$regex: term}}, {description: {$regex: term}}, {brand: {$regex: term}}]);
+  });
+  const searchQuery = {$or: conditions};
+
+  Bike.find(searchQuery, (err, bikes) => {
+    if (!err) {
+    res.send({ bikeData: bikes});
     } else {
       res.send(err);
     }
@@ -130,9 +197,9 @@ function sendCartItems(req, res) {
     const update = {$push: {cartItemIds: newItemId}}
     User.findOneAndUpdate(query, update, (err) => {
       if (!err) {
-        res.send(200, "item added to cart");
+        res.status(200).send("item added to cart");
       } else {
-        res.send(400, "failed to add item to cart")
+        res.status(400).send("failed to add item to cart")
       }
     })
   }
