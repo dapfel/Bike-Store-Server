@@ -1,0 +1,12 @@
+      name: String,
+      brand: String,
+      price: String,
+      description: String,
+      featured: Boolean,
+      electric: Boolean,
+      wheelSize: String,
+      color: String,
+      material: String,
+      dicipline: String,
+      gender: String,
+      images: [Buffer]

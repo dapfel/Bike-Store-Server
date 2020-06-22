@@ -12,6 +12,7 @@ const port = process.env.PORT || 5000;
 const app = initializeExpress();
 let User;
 let Bike;
+let BikeSpec;
 initializeDbConnection(passport);
 
 app.post("/register", (req, res) => {
@@ -35,6 +36,10 @@ app.get('/bikes/search', (req, res) => {
   searchBikes(req,res);
 });
 
+app.get("/bikes/filtered", (req, res) => {
+  sendFilteredBikes(req, res);
+});
+
 app.get("/cartItems", (req, res) => {
   if (req.isAuthenticated()) {
     sendCartItems(req, res);
@@ -54,7 +59,11 @@ app.post("/cartItems/:itemID", (req, res) => {
 
 app.get("/purchase", (req, res) => {
   purchaseCartItems(req, res);
-})
+});
+
+app.get("/bikeSpecList/:spec", (req, res) => {
+  getBikeSpecList(req, res);
+});
 
 app.listen(port, () => console.log(`Listening on port ${port}`));
 
@@ -110,10 +119,23 @@ function initializeDbConnection(passport) {
       price: String,
       description: String,
       featured: Boolean,
+      electric: Boolean,
+      wheelSize: String,
+      color: String,
+      material: String,
+      dicipline: String,
+      gender: String,
       images: [Buffer]
     });
 
     Bike = new mongoose.model("Bike", bikeSchema);
+
+    const bikeSpecSchema = new mongoose.Schema({
+      spec: String,
+      nameList: [String]
+    });
+    
+    BikeSpec = new mongoose.model("BikeSpec", bikeSpecSchema, "bikeSpecs");
 }
 
 function registerUser(req, res) {
@@ -176,6 +198,30 @@ function searchBikes(req, res) {
   });
 }
 
+function sendFilteredBikes(req, res) {
+  const searchOptions = req.query;
+  let SearchQuery = {};
+  searchOptions.forEach(key => {
+    if (key === priceMin) {
+      searchQuery = {...searchQuery, price: { $gt: priceMin}};
+    }
+    else if (key === priceMax) {
+      searchQuery = {...searchQuery, price: { $lt: priceMax}};
+    }
+    else {
+      searchQuery = {...searchQuery, [key]: req.query[key]}
+    }
+  });
+
+  Bike.find(searchQuery, (err, bikes) => {
+    if (!err) {
+    res.send({ bikeData: bikes});
+    } else {
+      res.send(err);
+    }
+  });
+}
+
 function sendCartItems(req, res) {
   User.findOne({_id: req.user._id}, (err, user) => {
     if (!err) {
@@ -190,21 +236,34 @@ function sendCartItems(req, res) {
         res.send(err);
       }
   });
+}
 
-  function addCartItemId(req, res) {
-    const newItemId = req.body.newItemId;
-    const query = {_id: req.user._id};
-    const update = {$push: {cartItemIds: newItemId}}
-    User.findOneAndUpdate(query, update, (err) => {
-      if (!err) {
-        res.status(200).send("item added to cart");
-      } else {
-        res.status(400).send("failed to add item to cart")
-      }
-    })
-  }
+function addCartItemId(req, res) {
+  const newItemId = req.params.itemId;
+  const query = {_id: req.user._id};
+  const update = {$push: {cartItemIds: newItemId}}
+  User.findOneAndUpdate(query, update, (err) => {
+    if (!err) {
+      res.status(200).send("item added to cart");
 
-  function purchaseCartItems(req, res) {
-    TODO: "process payment and send reciept info if successfull. then empty cart"
-  }
+    } else {
+      res.status(400).send("failed to add item to cart")
+    }
+  });
+}
+
+function purchaseCartItems(req, res) {
+  TODO: "process payment and send reciept info if successfull. then empty cart"
+}
+
+function getBikeSpecList(req, res) {
+  const query = {spec: req.params.spec};
+
+  BikeSpec.findOne(query,(err, bikeSpec) => {
+    if (!err) {
+      res.status(200).send({specNameList: bikeSpec.nameList});
+    } else {
+      res.status(400).send("failed to get spec list");
+    }
+  });
 }
