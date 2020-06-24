@@ -116,7 +116,7 @@ function initializeDbConnection(passport) {
     const bikeSchema = new mongoose.Schema({
       name: String,
       brand: String,
-      price: String,
+      price: Number,
       description: String,
       featured: Boolean,
       electric: Boolean,
@@ -125,7 +125,7 @@ function initializeDbConnection(passport) {
       material: String,
       dicipline: String,
       gender: String,
-      images: [Buffer]
+      image: String //base64 string
     });
 
     Bike = new mongoose.model("Bike", bikeSchema);
@@ -185,10 +185,14 @@ function searchBikes(req, res) {
   var tokenizedSearchTerms = searchTerm.split(" "); 
   const conditions = [];
   tokenizedSearchTerms.forEach((term) => {
-    conditions.push([{name: {$regex: term}}, {description: {$regex: term}}, {brand: {$regex: term}}]);
+    conditions.push({name: {$regex: term, $options: 'i' }}, {description: {$regex: term, $options: 'i' }}, {brand: {$regex: term, $options: 'i'}});
   });
-  const searchQuery = {$or: conditions};
-
+  let searchQuery;
+  if (conditions.length > 1) { 
+    searchQuery = {$or: conditions};
+  } else {
+    searchQuery = conditions[0];
+  }
   Bike.find(searchQuery, (err, bikes) => {
     if (!err) {
     res.send({ bikeData: bikes});
@@ -200,19 +204,19 @@ function searchBikes(req, res) {
 
 function sendFilteredBikes(req, res) {
   const searchOptions = req.query;
-  let SearchQuery = {};
-  searchOptions.forEach(key => {
-    if (key === priceMin) {
-      searchQuery = {...searchQuery, price: { $gt: priceMin}};
+  let searchQuery = {};
+  let priceMin;
+  (Object.entries(searchOptions)).forEach(([key, val]) => {
+    if (key === 'priceMin') {
+      priceMin = val;
     }
-    else if (key === priceMax) {
-      searchQuery = {...searchQuery, price: { $lt: priceMax}};
+    else if (key === 'priceMax') {
+      searchQuery = {...searchQuery, price: { $lt: val, $gt: priceMin}};
     }
     else {
-      searchQuery = {...searchQuery, [key]: req.query[key]}
+      searchQuery = {...searchQuery, [key]: val}
     }
   });
-
   Bike.find(searchQuery, (err, bikes) => {
     if (!err) {
     res.send({ bikeData: bikes});
