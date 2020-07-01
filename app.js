@@ -295,9 +295,10 @@ function processOrder(req, res) {
   
   TODO: "process payment and send order/reciept info if successfull."
   const orderReceiptInfo = {num: 342423};
-  sendReceiptEmail(req.user.username, orderReceiptInfo);
 
   //if (payment successful) {
+    const email = req.isAuthenticated() ? req.user.username : shippingAddress.email;
+    sendReceiptEmail(email, orderReceiptInfo);
     if (req.isAuthenticated()) {
       const query = {_id: req.user._id};
       let update = {cartItemIds: []}
