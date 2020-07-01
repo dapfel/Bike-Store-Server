@@ -7,6 +7,8 @@ import session from "express-session";
 import passport from "passport";
 import mongoose from "mongoose";
 import passportLocalMongoose from "passport-local-mongoose";
+import crypto from 'crypto';
+import nodemailer from "nodemailer";
 
 const port = process.env.PORT || 5000;
 const app = initializeExpress();
@@ -14,6 +16,8 @@ let User;
 let Bike;
 let BikeSpec;
 initializeDbConnection(passport);
+
+const key = process.env.KEY;
 
 app.post("/register", (req, res) => {
   registerUser(req, res);
@@ -50,15 +54,24 @@ app.get("/cartItems", (req, res) => {
 
 app.post("/cartItems/:itemID", (req, res) => {
   if (req.isAuthenticated()) {
-    addCartItemId(req, res);
+    addCartItem(req, res);
   }
   else {
     res.status(401).send("User not authenticated");
   }
 });
 
-app.get("/purchase", (req, res) => {
-  purchaseCartItems(req, res);
+app.delete("/cartItems/:itemID", (req, res) => {
+  if (req.isAuthenticated()) {
+    removeCartItem(req, res);
+  }
+  else {
+    res.status(401).send("User not authenticated");
+  }
+});
+
+app.post("/processOrder", (req, res) => {
+  processOrder(req, res);
 });
 
 app.get("/bikeSpecList/:spec", (req, res) => {
@@ -102,7 +115,7 @@ function initializeDbConnection(passport) {
       firstName: String,
       lastName: String,
       cartItemIds: [String],
-      creditCard: {num: String, exp: String, ccv: String}
+      creditCard: {name: String, num: {iv: String, encryptedData: String}, exp: String, cvv: String}
     });
     
     userSchema.plugin(passportLocalMongoose);
@@ -139,8 +152,9 @@ function initializeDbConnection(passport) {
 }
 
 function registerUser(req, res) {
+  const creditCard = {name: '', num: {iv: '', encryptedData: ''}, exp: '', cvv: ''};
   User.register({
-    username: req.body.username, firstName: req.body.firstName, lastName: req.body.lastName,
+    username: req.body.username, firstName: req.body.firstName, lastName: req.body.lastName, cartItemIds: [], creditCard: creditCard
   }, req.body.password, (err, newUser) => {
     if (err) {
       res.status(400).send("failed to register");
@@ -163,7 +177,10 @@ function loginUser (req, res) {
       res.status(400).send("failed to login");
     } else {
       passport.authenticate("local")(req, res, () => {
-        res.status(200).send({userCart: req.user.cartItemIds, creditCard: req.user.creditCard});
+        Bike.find().where('_id').in(req.user.cartItemIds).exec((err, userCartBikes) => {
+          const creditCard = req.user.creditCard.num.iv === '' ? undefined : decrypt(req.user.creditCard);
+          res.status(200).send({userCart: userCartBikes, creditCard: creditCard});
+        });
       });
     }
   });
@@ -242,10 +259,10 @@ function sendCartItems(req, res) {
   });
 }
 
-function addCartItemId(req, res) {
-  const newItemId = req.params.itemId;
+function addCartItem(req, res) {
+  const itemId = req.params.itemID;
   const query = {_id: req.user._id};
-  const update = {$push: {cartItemIds: newItemId}}
+  const update = {$push: {cartItemIds: itemId}}
   User.findOneAndUpdate(query, update, (err) => {
     if (!err) {
       res.status(200).send("item added to cart");
@@ -256,8 +273,43 @@ function addCartItemId(req, res) {
   });
 }
 
-function purchaseCartItems(req, res) {
-  TODO: "process payment and send reciept info if successfull. then empty cart"
+function removeCartItem(req, res) {
+  const itemId = req.params.itemID;
+  const query = {_id: req.user._id};
+  const update = {$pull: {cartItemIds: itemId}}
+  User.findOneAndUpdate(query, update, (err) => {
+    if (!err) {
+      res.status(200).send("item removed from cart");
+
+    } else {
+      res.status(400).send("failed to remove item from cart")
+    }
+  });
+}
+
+function processOrder(req, res) {
+  const productIds = req.body.productIds;
+  const shippingAddress = req.body.shippingAddress;
+  const billingAddress = req.body.billingAddress;
+  const creditCard = req.body.creditCard;
+  
+  TODO: "process payment and send order/reciept info if successfull."
+  const orderReceiptInfo = {num: 342423};
+  sendReceiptEmail(req.user.username, orderReceiptInfo);
+
+  //if (payment successful) {
+    if (req.isAuthenticated()) {
+      const query = {_id: req.user._id};
+      let update = {cartItemIds: []}
+      if (req.body.saveCreditCard) {
+        update = {...update, creditCard: encrypt(creditCard)};
+      }
+      User.findOneAndUpdate(query, update, (err, result) => {});
+    }
+    res.status(200).send(orderReceiptInfo);
+  //} else {
+    // res.status(not good input).send("Order processing failed");
+  //}
 }
 
 function getBikeSpecList(req, res) {
@@ -271,3 +323,49 @@ function getBikeSpecList(req, res) {
     }
   });
 }
+
+function encrypt(creditCard) {
+  const iv = crypto.randomBytes(16);
+  let num = creditCard.num;
+  let cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key), iv);
+  let encrypted = cipher.update(num);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  const encryptedCreditCard = {...creditCard, num: { iv: iv.toString('hex'), encryptedData: encrypted.toString('hex') }};
+  return encryptedCreditCard;
+ }
+ 
+ function decrypt(encryptedCreditCard) {
+  let encryptedNum = encryptedCreditCard.num;
+  let iv = Buffer.from(encryptedNum.iv, 'hex');
+  let encryptedText = Buffer.from(encryptedNum.encryptedData, 'hex');
+  let decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key), iv);
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  const creditCard = {name: encryptedCreditCard.name, num: decrypted.toString(), exp: encryptedCreditCard.exp, cvv: encryptedCreditCard.cvv}
+  return creditCard;
+ }
+ 
+ var transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'thebikeshackbikestore@gmail.com',
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+function sendReceiptEmail(emailAddress, orderReceiptInfo) {
+  var mailOptions = {
+    from: 'thebikeshackbikestore@gmail.com',
+    to: emailAddress,
+    subject: 'Order Receipt',
+    text: 'Your recent order has been proccessed. Order number: ' + orderReceiptInfo.num
+  };
+
+  transporter.sendMail(mailOptions, function(error, info){
+    if (error) {
+      console.log(error);
+    } else {
+      console.log('Email sent: ' + info.response);
+    }
+  });
+ }
