@@ -230,6 +230,102 @@ const bikes = [
       }
 ];
 
+const specs = [
+  {
+    spec : "brand",
+    nameList : [ 
+        "Cannondale", 
+        "Cube", 
+        "Frog", 
+        "Genesis", 
+        "Kona", 
+        "Mondrake", 
+        "Nukeproof", 
+        "Specialized", 
+        "Transition", 
+        "Trek", 
+        "Whyte", 
+        "Yeti"
+    ]
+},
+{
+  spec : "wheelSize",
+  nameList : [ 
+      "11\"", 
+      "12\"", 
+      "20\"", 
+      "24\"", 
+      "26\"", 
+      "27.5\"", 
+      "27.5\"/29\"", 
+      "27.5+\"", 
+      "29\"", 
+      "700c"
+  ]
+},
+{
+  spec : "color",
+  nameList : [ 
+      "Acid Green", 
+      "Acid Red", 
+      "Anthracite", 
+      "Black", 
+      "Blue", 
+      "Bronze", 
+      "Burgundy", 
+      "Carbon", 
+      "Chrome", 
+      "Dark Anthracite", 
+      "Denim", 
+      "Electric Blue", 
+      "Emerald", 
+      "Gold", 
+      "Granite", 
+      "Graphite", 
+      "Green", 
+      "Grey", 
+      "Inferno", 
+      "Lime", 
+      "Midnight Blue", 
+      "Navy", 
+      "Nuclear Yellow", 
+      "Olive", 
+      "Orange", 
+      "Petrol", 
+      "Purple", 
+      "Raw", 
+      "Red", 
+      "Saber", 
+      "Silver", 
+      "Slate", 
+      "Stealth Grey", 
+      "Steel", 
+      "Storm", 
+      "Team", 
+      "Team Replica", 
+      "Turquoise", 
+      "Violet", 
+      "White", 
+      "Yellow"
+  ]
+},
+{
+  spec : "material",
+  nameList : [ 
+      "Aluminium", 
+      "Carbon", 
+      "Steel"
+  ]
+},
+{
+  spec : "dicipline",
+  nameList : [ 
+      "MTB", 
+      "Road"
+  ]
+}
+];
+
 bikes.forEach((bike) => {
     let newBike = new Bike;
     newBike.name = bike.name;
@@ -247,6 +343,12 @@ bikes.forEach((bike) => {
     newBike.save();
 });
 
+specs.forEach((spec) => {
+  let newSpec = new BikeSpec;
+  newSpec.spec = spec.spec;
+  newSpec.nameList = spec.nameList;
+  newSpec.save();
+});
 
 
 //------------------------- Helpers -----------------------------------------//
@@ -272,7 +374,8 @@ function initializeExpress() {
   }
   
 function initializeDbConnection(passport) {
-      mongoose.connect("mongodb://localhost:27017/bikeStoreDB", {
+      const dbPassword = process.env.DB_PASS;
+      mongoose.connect("mongodb+srv://admin-daniel:" + dbPassword + "@cluster0.tqcct.mongodb.net/bikeStoreDB?retryWrites=true&w=majority", {
         useNewUrlParser: true,
         useUnifiedTopology: true
       });

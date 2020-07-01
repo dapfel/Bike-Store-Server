@@ -103,7 +103,8 @@ function initializeExpress() {
 }
 
 function initializeDbConnection(passport) {
-    mongoose.connect("mongodb://localhost:27017/bikeStoreDB", {
+    const dbPassword = process.env.DB_PASS;
+    mongoose.connect("mongodb+srv://admin-daniel:" + dbPassword + "@cluster0.tqcct.mongodb.net/bikeStoreDB?retryWrites=true&w=majority", {
       useNewUrlParser: true,
       useUnifiedTopology: true
     });
