@@ -1,14 +1,14 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
+const express = require("express");
+const cors = require("cors");
+const dotenv = require("dotenv");
   dotenv.config();
-import bodyParser from "body-parser";
-import session from "express-session";
-import passport from "passport";
-import mongoose from "mongoose";
-import passportLocalMongoose from "passport-local-mongoose";
-import crypto from 'crypto';
-import nodemailer from "nodemailer";
+const bodyParser = require("body-parser");
+const session = require("express-session");
+const passport = require("passport");
+const mongoose = require("mongoose");
+const passportLocalMongoose = require("passport-local-mongoose");
+const crypto = require('crypto');
+const nodemailer = require("nodemailer");
 
 const port = process.env.PORT || 5000;
 const app = initializeExpress();
